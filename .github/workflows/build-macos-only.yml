@@ -53,7 +53,7 @@ jobs:
         uses: tauri-apps/tauri-action@v1
         env:
           NODE_OPTIONS: '--max_old_space_size=4096'
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tagName: 'macos-build'
           releaseName: 'Clash Verge Rev macOS'
