@@ -54,7 +54,6 @@ jobs:
         env:
           NODE_OPTIONS: '--max_old_space_size=4096'
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_CONFIG: '{"bundle":{"createUpdaterArtifacts":false}}'
         with:
           tagName: 'macos-build'
           releaseName: 'Clash Verge Rev macOS'
@@ -62,4 +61,4 @@ jobs:
           releaseDraft: false
           prerelease: true
           tauriScript: pnpm
-          args: --target ${{ matrix.target }}
+          args: --target ${{ matrix.target }} --config src-tauri/tauri.macos.ci.conf.json
