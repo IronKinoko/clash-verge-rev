@@ -41,18 +41,29 @@ hardware_port=$(networksetup -listnetworkserviceorder | awk -v dev="$nic" '
 
 original_dns=$(networksetup -getdnsservers "$hardware_port")
 
-is_valid_dns=false
+dns_servers=()
 for ip in $original_dns; do
     ip=$(echo "$ip" | tr -d '[:space:]')
-    if [ -n "$ip" ] && (is_valid_ipv4 "$ip" || is_valid_ipv6 "$ip"); then
-        is_valid_dns=true
-        break
+    if [ -n "$ip" ] && is_valid_ip "$ip"; then
+        dns_servers+=("$ip")
     fi
 done
 
-if [ "$is_valid_dns" = false ]; then
+# Persist the pre-append list so unset_dns.sh restores the original servers.
+if [ "${#dns_servers[@]}" -eq 0 ]; then
     echo "empty" >.original_dns.txt
 else
-    echo "$original_dns" >.original_dns.txt
+    printf '%s\n' "${dns_servers[@]}" >.original_dns.txt
 fi
-networksetup -setdnsservers "$hardware_port" "$1"
+
+already_present=false
+for ip in "${dns_servers[@]}"; do
+    if [ "$ip" = "$1" ]; then
+        already_present=true
+        break
+    fi
+done
+if [ "$already_present" = false ]; then
+    dns_servers+=("$1")
+fi
+networksetup -setdnsservers "$hardware_port" "${dns_servers[@]}"
