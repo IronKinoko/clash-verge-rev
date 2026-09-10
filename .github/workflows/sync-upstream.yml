@@ -1,0 +1,55 @@
+name: Sync with upstream
+
+on:
+  schedule:
+    - cron: '0 0 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  sync-dev:
+    name: Sync upstream dev
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout dev
+        uses: actions/checkout@v7
+        with:
+          ref: dev
+          fetch-depth: 0
+
+      - name: Rebase onto upstream dev
+        id: sync
+        run: |
+          git remote add upstream https://github.com/clash-verge-rev/clash-verge-rev.git
+          git fetch upstream dev
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          BEFORE=$(git rev-parse HEAD)
+          if ! git rebase upstream/dev; then
+            git rebase --abort
+            echo "::error::Rebase onto upstream/dev failed (conflict). Resolve manually and re-run."
+            exit 1
+          fi
+          AFTER=$(git rev-parse HEAD)
+          if [ "$BEFORE" = "$AFTER" ]; then
+            echo "updated=false" >> "$GITHUB_OUTPUT"
+            echo "Already up to date with upstream"
+          else
+            echo "updated=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Push to dev
+        if: steps.sync.outputs.updated == 'true'
+        run: git push --force-with-lease origin HEAD:dev
+
+      - name: Trigger macOS build
+        if: steps.sync.outputs.updated == 'true'
+        run: |
+          curl -sS -X POST \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.repository }}/actions/workflows/build-macos-only.yml/dispatches" \
+            -d '{}'
