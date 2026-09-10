@@ -20,8 +20,6 @@ jobs:
         include:
           - os: macos-latest
             target: aarch64-apple-darwin
-          - os: macos-latest
-            target: x86_64-apple-darwin
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout Repository
@@ -68,16 +66,39 @@ jobs:
           pnpm i
           pnpm run prebuild ${{ matrix.target }}
 
+      - name: Prepare release
+        id: release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          TAG="v${VERSION}"
+          ID=$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${TAG}" --template '.id' 2>/dev/null || true)
+          if [ -z "$ID" ]; then
+            ID=$(gh api -X POST "repos/${GITHUB_REPOSITORY}/releases" \
+              -f tag_name="$TAG" -f "name=Clash Verge Rev ${VERSION}" \
+              -f body="macOS-only build" -f prerelease=true --template '.id')
+          fi
+          echo "id=$ID" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
       - name: Tauri build for macOS
         uses: tauri-apps/tauri-action@v1
         env:
           NODE_OPTIONS: '--max_old_space_size=4096'
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
         with:
-          tagName: 'macos-build'
+          releaseId: ${{ steps.release.outputs.id }}
+          tagName: ${{ steps.release.outputs.tag }}
           releaseName: 'Clash Verge Rev macOS'
           releaseBody: 'macOS-only build'
           releaseDraft: false
           prerelease: true
           tauriScript: pnpm
           args: --target ${{ matrix.target }} --config src-tauri/tauri.macos.ci.conf.json
+
+      - name: Publish update manifest
+        run: pnpm updater
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
