@@ -33,6 +33,17 @@ jobs:
           toolchain: '1.98.1'
           targets: ${{ matrix.target }}
 
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/dev' }}
+          prefix-key: 'v1-rust'
+          key: 'rust-shared-stable-${{ matrix.os }}-${{ matrix.target }}'
+          workspaces: |
+            . -> target
+          cache-all-crates: true
+          cache-workspace-crates: true
+
       - uses: pnpm/action-setup@v6.1.0
         name: Install pnpm
         with:
@@ -43,6 +54,14 @@ jobs:
         with:
           node-version: '24.20.0'
           cache: 'pnpm'
+
+      - name: Pnpm Cache
+        uses: actions/cache@v6
+        with:
+          path: ~/.pnpm-store
+          key: 'pnpm-shared-stable-${{ matrix.os }}-${{ matrix.target }}'
+          restore-keys: |
+            pnpm-shared-stable-${{ matrix.os }}-${{ matrix.target }}
 
       - name: Pnpm install and prebuild
         run: |
