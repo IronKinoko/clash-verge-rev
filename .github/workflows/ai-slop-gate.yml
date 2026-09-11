@@ -4,8 +4,7 @@ name: ai-slop-gate
 # weaken its own gates. No checkout and no secrets: every check reads only
 # the event payload.
 on:
-  pull_request_target:
-    types: [opened, reopened, synchronize, labeled, unlabeled, edited, ready_for_review]
+  workflow_dispatch:
 
 permissions: {}
 

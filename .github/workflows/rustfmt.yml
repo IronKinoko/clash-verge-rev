@@ -5,7 +5,7 @@
 name: Check Formatting
 
 on:
-  pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
