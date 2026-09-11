@@ -55,18 +55,8 @@
 
 name: "PR AI Slop Review"
 on:
-  pull_request_target:
-    types:
-      - opened
-      - synchronize
-  # roles: all # Roles processed as role check in pre-activation job
-  # skip-bots: # Skip-bots processed as bot check in pre-activation job
-  # - dependabot # Skip-bots processed as bot check in pre-activation job
-  # - renovate # Skip-bots processed as bot check in pre-activation job
-  # skip-roles: # Skip-roles processed as role check in pre-activation job
-  # - admin # Skip-roles processed as role check in pre-activation job
-  # - maintainer # Skip-roles processed as role check in pre-activation job
-  # - write # Skip-roles processed as role check in pre-activation job
+  # Fork only runs build-macos-only.yml and sync-upstream.yml, so the upstream
+  # PR review pipeline is disabled; regenerate with `gh aw compile`.
   workflow_dispatch:
     inputs:
       aw_context:
