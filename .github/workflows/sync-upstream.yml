@@ -1,0 +1,70 @@
+name: Sync with upstream
+
+# GitHub cannot subscribe to another repository's push events, so upstream is
+# polled instead. Five minutes is the shortest interval cron supports; GitHub
+# may delay scheduled runs under load.
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  # The dispatch below uses the built-in token, which needs actions: write.
+  # The push uses SYNC_TOKEN instead, because GITHUB_TOKEN has no `workflows`
+  # scope and would be rejected for touching .github/workflows.
+  actions: write
+
+# A scheduled run may still be in flight when the next one starts.
+concurrency:
+  group: sync-upstream
+  cancel-in-progress: true
+
+jobs:
+  sync-dev:
+    name: Sync upstream dev
+    runs-on: ubuntu-latest
+    steps:
+      # The built-in GITHUB_TOKEN has no `workflows` scope, so it cannot push
+      # commits that touch .github/workflows. SYNC_TOKEN is a PAT with the
+      # repo and workflow scopes.
+      - name: Checkout dev
+        uses: actions/checkout@v7
+        with:
+          ref: dev
+          fetch-depth: 0
+          token: ${{ secrets.SYNC_TOKEN }}
+
+      - name: Rebase onto upstream dev
+        id: sync
+        run: |
+          git remote add upstream https://github.com/clash-verge-rev/clash-verge-rev.git
+          git fetch upstream dev
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          if git merge-base --is-ancestor upstream/dev HEAD; then
+            echo "updated=false" >> "$GITHUB_OUTPUT"
+            echo "Already up to date with upstream"
+            exit 0
+          fi
+
+          if ! git rebase upstream/dev; then
+            git rebase --abort
+            echo "::error::Rebase onto upstream/dev failed (conflict). Resolve manually and re-run."
+            exit 1
+          fi
+          echo "updated=true" >> "$GITHUB_OUTPUT"
+
+      - name: Push to dev
+        if: steps.sync.outputs.updated == 'true'
+        run: git push --force-with-lease origin HEAD:dev
+
+      - name: Trigger macOS build
+        if: steps.sync.outputs.updated == 'true'
+        run: |
+          curl -sS --fail-with-body -X POST \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.repository }}/actions/workflows/build-macos-only.yml/dispatches" \
+            -d '{"ref":"dev"}'

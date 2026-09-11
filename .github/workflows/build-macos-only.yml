@@ -1,0 +1,113 @@
+name: Build macOS only
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  CARGO_INCREMENTAL: 0
+  RUST_BACKTRACE: short
+  HUSKY: 0
+
+jobs:
+  build-macos:
+    name: Build macOS
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            target: aarch64-apple-darwin
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v7
+
+      - name: Install Rust Stable
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: '1.98.1'
+          targets: ${{ matrix.target }}
+
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/dev' }}
+          prefix-key: 'v1-rust'
+          key: 'rust-shared-stable-${{ matrix.os }}-${{ matrix.target }}'
+          workspaces: |
+            . -> target
+          cache-all-crates: true
+          cache-workspace-crates: true
+
+      - uses: pnpm/action-setup@v6.1.0
+        name: Install pnpm
+        with:
+          run_install: false
+
+      - name: Install Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24.20.0'
+          cache: 'pnpm'
+
+      - name: Pnpm Cache
+        uses: actions/cache@v6
+        with:
+          path: ~/.pnpm-store
+          key: 'pnpm-shared-stable-${{ matrix.os }}-${{ matrix.target }}'
+          restore-keys: |
+            pnpm-shared-stable-${{ matrix.os }}-${{ matrix.target }}
+
+      - name: Pnpm install and prebuild
+        run: |
+          pnpm i
+          pnpm run prebuild ${{ matrix.target }}
+
+      - name: Prepare release
+        id: release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          TAG="v${VERSION}"
+          ID=$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${TAG}" --template '.id' 2>/dev/null || true)
+          if [ -z "$ID" ]; then
+            ID=$(gh api -X POST "repos/${GITHUB_REPOSITORY}/releases" \
+              -f tag_name="$TAG" -f "name=Clash Verge Rev ${VERSION}" \
+              -f body="macOS-only build" -f prerelease=true --template '.id')
+          fi
+          echo "id=$ID" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Tauri build for macOS
+        uses: tauri-apps/tauri-action@v1
+        env:
+          NODE_OPTIONS: '--max_old_space_size=4096'
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
+        with:
+          releaseId: ${{ steps.release.outputs.id }}
+          tagName: ${{ steps.release.outputs.tag }}
+          releaseName: 'Clash Verge Rev macOS'
+          releaseBody: |
+            macOS-only build (Apple Silicon).
+
+            First-time install: this build is not Apple-signed, so macOS
+            reports the app as "damaged" after downloading. Drag the app
+            to /Applications, then run once per download:
+
+                xattr -cr /Applications/Clash\ Verge.app
+
+            and open it normally. Auto-updates do not require this step.
+          releaseDraft: false
+          prerelease: true
+          tauriScript: pnpm
+          args: --target ${{ matrix.target }} --config src-tauri/tauri.macos.ci.conf.json
+
+      - name: Publish update manifest
+        run: pnpm updater
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,10 +1,9 @@
 name: Release Build
 
 on:
-  push:
-    # -rc tag 时预览发布, 跳过 telegram 通知、跳过 winget 提交、跳过 latest.json 文件更新
-    tags:
-      - 'v*.*.*'
+  # Fork builds ship from build-macos-only.yml, so the upstream tag-push
+  # release pipeline is disabled here and kept for manual runs only.
+  workflow_dispatch:
 permissions: write-all
 env:
   CARGO_INCREMENTAL: 0

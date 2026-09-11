@@ -5,24 +5,6 @@ name: docs-consistency
 # policy (pr-ai-slop-review) cannot drift apart unnoticed. Advisory only:
 # it informs, it does not gate merges.
 on:
-  pull_request:
-    paths:
-      - CONTRIBUTING.md
-      - AGENTS.md
-      - CLAUDE.md
-      - GEMINI.md
-      - .github/PULL_REQUEST_TEMPLATE.md
-      - .github/workflows/pr-ai-slop-review.md
-      - .github/workflows/docs-consistency.yml
-  push:
-    branches: [dev]
-    paths:
-      - CONTRIBUTING.md
-      - AGENTS.md
-      - CLAUDE.md
-      - GEMINI.md
-      - .github/PULL_REQUEST_TEMPLATE.md
-      - .github/workflows/pr-ai-slop-review.md
   workflow_dispatch:
 
 permissions:
