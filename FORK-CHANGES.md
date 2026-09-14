@@ -13,6 +13,7 @@
 | 文件 | 类型 | 说明 |
 | --- | --- | --- |
 | `.github/workflows/build-macos-only.yml` | 新增 | macOS 专用构建 + 自动更新发布 |
+| `.github/release-notes/macos-only.md` | 新增 | macOS 构建的 release 固定说明（安装提示） |
 | `src-tauri/tauri.macos.ci.conf.json` | 新增 | CI 专用 Tauri 配置（含更新器公钥/端点） |
 | `scripts/set_dns.sh` | 修改 | DNS 追加而非替换 |
 | `.github/workflows/sync-upstream.yml` | 新增 | 每天自动 rebase 同步上游 |
@@ -37,6 +38,31 @@
   `scripts/updater.mjs`），扫描本 fork 的 release，把各平台的下载 URL 和
   签名写入 `update.json` / `update-proxy.json`，发布到 fork 的 `updater`
   release 上
+- **Release 正文**：固定说明来自 `.github/release-notes/macos-only.md`；
+  构建结束后 `Update release notes` 步骤重新生成本次构建信息（排除 fork
+  自己的最新一条 commit 后的上游提交列表、构建时间、构建 hash），
+  `<!-- upstream-build-info -->` 标记以上的既有内容原样保留，标记以下的部分
+  每次构建整体替换，正文不会随构建次数增长
+- **Release 时间**：GitHub API 不允许写 `published_at`，因此用「先转 draft
+  再发布」刷新 release 时间；该操作不影响 assets 和 prerelease 标记
+
+## 1.1 release 正文结构
+
+```
+<固定说明，来自 .github/release-notes/macos-only.md>
+
+<!-- upstream-build-info -->
+## 本次构建
+
+上游提交（已排除本仓库最新一条）：
+- `<hash>` <subject>        # 最近 20 条上游提交
+
+构建时间：<Asia/Shanghai 时间>
+构建 Hash：`<fork HEAD short hash>`
+```
+
+`git log` 的范围是 `HEAD~1`：fork 的最新一条 commit 是保留给 fork 自己的
+（如 CI 改动），不属于上游信息，因此从上游信息里排除。
 
 ## 2. CI 专用 Tauri 配置
 
