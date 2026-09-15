@@ -16,7 +16,10 @@
 | `.github/release-notes/macos-only.md` | 新增 | macOS 构建的 release 固定说明（安装提示） |
 | `src-tauri/tauri.macos.ci.conf.json` | 新增 | CI 专用 Tauri 配置（含更新器公钥/端点） |
 | `scripts/set_dns.sh` | 修改 | DNS 追加而非替换 |
-| `.github/workflows/sync-upstream.yml` | 新增 | 每天自动 rebase 同步上游 |
+| `.github/workflows/sync-upstream.yml` | 新增 | 每 5 分钟自动 rebase 同步上游 |
+| `.github/workflows/{ai-slop-gate,autobuild,copilot-setup-steps,docs-consistency,frontend-check,lint-clippy,release,rustfmt}.yml` | 修改 | 去掉上游的自动触发，只保留手动触发 |
+| `.github/workflows/pr-ai-slop-review.lock.yml` | 修改 | 同上（`gh aw compile` 生成的锁文件，勿手改） |
+| `FORK-CHANGES.md` | 新增 | 本文档 |
 
 ## 1. macOS 专用构建工作流
 
@@ -100,13 +103,36 @@ fork 没有 Apple 签名身份和上游的更新密钥，因此 CI 构建单独�
 
 文件：`.github/workflows/sync-upstream.yml`（新增）
 
-- **调度**：每天 `00:00 UTC`（北京时间 08:00），也可手动触发
+- **调度**：每 5 分钟轮询一次（`*/5 * * * *`，cron 支持的最短间隔），
+  也可手动触发；GitHub 在负载高时可能延迟调度
 - **同步方式**：`git rebase upstream/dev`，保持线性历史，不产生 merge commit；
   推送使用 `git push --force-with-lease`（rebase 会改写 fork commit 的 SHA）
 - **构建联动**：仅当 rebase 后 HEAD 有变化（上游有新提交）才 push 并自动
   触发 `build-macos-only.yml`
 - **冲突处理**：rebase 失败时 `git rebase --abort` 并让 job 失败，不做任何
   push，需手动解决后重跑
+
+### 同步注意
+
+上游会 force-push `dev`。如果本地 rebase 时带入了上游随后丢弃的提交，
+该提交会与上游的新提交冲突（例如上游先 revert 再正式修复同一个依赖）。
+这类提交不属于 fork 的改动，确认后直接 `git rebase --skip` 丢弃即可。
+
+## Commit 列表（相对 upstream/dev，主题）
+
+```
+feat(ci): record upstream build info in macOS release notes
+chore(fork): consolidate fork build and sync automation
+```
+
+fork 只有以上两条 commit（rebase 会改写 SHA，因此按主题列出）：
+
+- `chore(fork): consolidate fork build and sync automation`：macOS 构建工作流、
+  CI Tauri 配置、上游同步工作流、DNS 追加脚本、限制上游自动化触发、本文档
+- `feat(ci): record upstream build info in macOS release notes`：构建结束后向
+  release 正文写入本次构建信息（上游提交列表、时间、hash）
+
+改动文件清单见 `git diff --name-status upstream/dev dev`。
 
 ## 应用自动更新链路
 
@@ -120,13 +146,3 @@ App 内的更新检查（`@tauri-apps/plugin-updater`）读取编译进应用的
 该验证走 Tauri 自己的 minisign 体系，与 Apple 签名/公证无关。注意 Tauri
 更新器只在清单版本**高于**当前运行版本时才提示更新：上游发新版本 →
 fork 同步 + 构建 → App 自动更新到 fork 构建；版本不变的重建需手动下载。
-
-## Commit 列表（相对 upstream/dev，主题）
-
-```
-docs: add fork changes documentation
-feat(ci): add daily upstream sync workflow
-feat(ci): build Apple Silicon only and serve auto-updates from fork releases
-perf(ci): add Rust and pnpm caches to macOS build workflow
-feat(ci): add macOS-only build workflow for fork builds
-```

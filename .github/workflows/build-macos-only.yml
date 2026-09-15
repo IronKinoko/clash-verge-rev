@@ -77,12 +77,12 @@ jobs:
         run: |
           VERSION=$(node -p "require('./package.json').version")
           TAG="v${VERSION}"
-          ID=$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${TAG}" --template '.id' 2>/dev/null || true)
+          ID=$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${TAG}" --jq '.id' 2>/dev/null || true)
           if [ -z "$ID" ]; then
             ID=$(gh api -X POST "repos/${GITHUB_REPOSITORY}/releases" \
               -f tag_name="$TAG" -f "name=Clash Verge Rev ${VERSION}" \
               -F body=@.github/release-notes/macos-only.md \
-              -f prerelease=true --template '.id')
+              -f prerelease=true --jq '.id')
           fi
           echo "id=$ID" >> "$GITHUB_OUTPUT"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
@@ -120,6 +120,13 @@ jobs:
           gh api "repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}" \
             --jq '.body // ""' \
             | awk -v marker="$MARKER" '$0 == marker { exit } { print }' > existing.txt
+
+          # A release whose body is empty or already stripped has nothing above
+          # the marker, so the install instructions have to come from the
+          # template instead of being dropped.
+          if [ ! -s existing.txt ]; then
+            cat .github/release-notes/macos-only.md > existing.txt
+          fi
 
           {
             cat existing.txt
