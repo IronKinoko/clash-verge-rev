@@ -1,0 +1,152 @@
+name: Build macOS only
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  CARGO_INCREMENTAL: 0
+  RUST_BACKTRACE: short
+  HUSKY: 0
+
+jobs:
+  build-macos:
+    name: Build macOS
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            target: aarch64-apple-darwin
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v7
+        with:
+          # The release notes list upstream commits, which needs history beyond
+          # the checked-out commit.
+          fetch-depth: 0
+
+      - name: Install Rust Stable
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: '1.98.1'
+          targets: ${{ matrix.target }}
+
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/dev' }}
+          prefix-key: 'v1-rust'
+          key: 'rust-shared-stable-${{ matrix.os }}-${{ matrix.target }}'
+          workspaces: |
+            . -> target
+          cache-all-crates: true
+          cache-workspace-crates: true
+
+      - uses: pnpm/action-setup@v6.1.0
+        name: Install pnpm
+        with:
+          run_install: false
+
+      - name: Install Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24.20.0'
+          cache: 'pnpm'
+
+      - name: Pnpm Cache
+        uses: actions/cache@v6
+        with:
+          path: ~/.pnpm-store
+          key: 'pnpm-shared-stable-${{ matrix.os }}-${{ matrix.target }}'
+          restore-keys: |
+            pnpm-shared-stable-${{ matrix.os }}-${{ matrix.target }}
+
+      - name: Pnpm install and prebuild
+        run: |
+          pnpm i
+          pnpm run prebuild ${{ matrix.target }}
+
+      - name: Prepare release
+        id: release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          TAG="v${VERSION}"
+          ID=$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${TAG}" --jq '.id' 2>/dev/null || true)
+          if [ -z "$ID" ]; then
+            ID=$(gh api -X POST "repos/${GITHUB_REPOSITORY}/releases" \
+              -f tag_name="$TAG" -f "name=Clash Verge Rev ${VERSION}" \
+              -F body=@.github/release-notes/macos-only.md \
+              -f prerelease=true --jq '.id')
+          fi
+          echo "id=$ID" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Tauri build for macOS
+        uses: tauri-apps/tauri-action@v1
+        env:
+          NODE_OPTIONS: '--max_old_space_size=4096'
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
+        with:
+          releaseId: ${{ steps.release.outputs.id }}
+          tagName: ${{ steps.release.outputs.tag }}
+          releaseName: 'Clash Verge Rev macOS'
+          releaseDraft: false
+          prerelease: true
+          tauriScript: pnpm
+          args: --target ${{ matrix.target }} --config src-tauri/tauri.macos.ci.conf.json
+
+      - name: Publish update manifest
+        run: pnpm updater
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update release notes
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          RELEASE_ID="${{ steps.release.outputs.id }}"
+          MARKER='<!-- upstream-build-info -->'
+
+          # Everything above the marker is existing release content (the
+          # install instructions, plus any manual edit) and is kept as-is; only
+          # the generated block below it is regenerated on every build.
+          gh api "repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}" \
+            --jq '.body // ""' \
+            | awk -v marker="$MARKER" '$0 == marker { exit } { print }' > existing.txt
+
+          # A release whose body is empty or already stripped has nothing above
+          # the marker, so the install instructions have to come from the
+          # template instead of being dropped.
+          if [ ! -s existing.txt ]; then
+            cat .github/release-notes/macos-only.md > existing.txt
+          fi
+
+          {
+            cat existing.txt
+            echo
+            echo "$MARKER"
+            echo '## 本次构建'
+            echo
+            echo '上游提交（已排除本仓库最新一条）：'
+            echo
+            git log --pretty=format:'- `%h` %s' -20 HEAD~1
+            echo
+            echo
+            echo "构建时间：$(TZ=Asia/Shanghai date '+%Y-%m-%d %H:%M:%S %z')"
+            echo "构建 Hash：\`$(git rev-parse --short HEAD)\`"
+          } > release-body.md
+
+          # published_at is not writable through the API, so a draft round-trip
+          # is the only way to refresh the release's displayed time. Assets and
+          # the prerelease flag survive the toggle.
+          gh api -X PATCH "repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}" \
+            -F body=@release-body.md -F draft=true > /dev/null
+          gh api -X PATCH "repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}" \
+            -F draft=false > /dev/null
