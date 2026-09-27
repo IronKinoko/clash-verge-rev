@@ -82,7 +82,7 @@ jobs:
             ID=$(gh api -X POST "repos/${GITHUB_REPOSITORY}/releases" \
               -f tag_name="$TAG" -f "name=Clash Verge Rev ${VERSION}" \
               -F body=@.github/release-notes/macos-only.md \
-              -f prerelease=true --jq '.id')
+              -f prerelease=false --jq '.id')
           fi
           echo "id=$ID" >> "$GITHUB_OUTPUT"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
@@ -98,7 +98,7 @@ jobs:
           tagName: ${{ steps.release.outputs.tag }}
           releaseName: 'Clash Verge Rev macOS'
           releaseDraft: false
-          prerelease: true
+          prerelease: false
           tauriScript: pnpm
           args: --target ${{ matrix.target }} --config src-tauri/tauri.macos.ci.conf.json
 
